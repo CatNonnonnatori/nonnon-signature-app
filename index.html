@@ -1,0 +1,1507 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="nonnon確認書">
+  <meta name="theme-color" content="#FAF8F5">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" href="./icons/icon-192.png">
+  <title>CAT LOUNGE nonnon - ご利用に関する確認書 & スタッフ事前説明システム</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React 18 & ReactDOM & Babel -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;700&display=swap');
+    body {
+      font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: #FAF8F5;
+      color: #2D2A26;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      width: 8px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background-color: #D6CFC7;
+      border-radius: 9999px;
+    }
+    @media print {
+      .no-print { display: none !important; }
+      .print-only { display: block !important; }
+      body { background-color: #fff; }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // =========================================================================
+    // iPad端末内 IndexedDB ヘルパー (CatLoungeNonnonDB)
+    // =========================================================================
+    const DB_NAME = 'CatLoungeNonnonDB';
+    const DB_VERSION = 1;
+    const STORE_NAME = 'signature_records';
+
+    const initDB = () => {
+      return new Promise((resolve, reject) => {
+        if (!window.indexedDB) {
+          reject(new Error('お使いのブラウザはIndexedDBに対応していません。'));
+          return;
+        }
+        const request = window.indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+            store.createIndex('customer_name', 'customer_name', { unique: false });
+            store.createIndex('agreed_at', 'agreed_at', { unique: false });
+          }
+        };
+        request.onsuccess = (e) => resolve(e.target.result);
+        request.onerror = (e) => reject(e.target.error);
+      });
+    };
+
+    const addRecordToDB = async (record) => {
+      const db = await initDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([STORE_NAME], 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.add(record);
+        req.onsuccess = () => resolve(true);
+        req.onerror = (e) => reject(e.target.error);
+      });
+    };
+
+    const getAllRecordsFromDB = async () => {
+      const db = await initDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([STORE_NAME], 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.getAll();
+        req.onsuccess = () => {
+          const list = req.result || [];
+          list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+          resolve(list);
+        };
+        req.onerror = (e) => reject(e.target.error);
+      });
+    };
+
+    const importRecordsToDB = async (recordsList) => {
+      const db = await initDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction([STORE_NAME], 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        recordsList.forEach((r) => store.put(r));
+        tx.oncomplete = () => resolve(true);
+        tx.onerror = (e) => reject(e.target.error);
+      });
+    };
+
+    // --- 店舗ロゴ (CAT LOUNGE nonnon 規定) ---
+    const BrandLogo = ({ size = "normal" }) => (
+      <div className="flex flex-col items-center justify-center select-none">
+        <span className="text-[10px] md:text-xs tracking-[0.35em] font-light text-[#78716C] uppercase">
+          CAT LOUNGE
+        </span>
+        <div className="flex items-center gap-2 mt-0.5">
+          <span className={`${size === "small" ? "text-xl" : "text-2xl md:text-3xl"} font-bold tracking-tight text-[#1C1917]`}>non</span>
+          <svg className={`${size === "small" ? "w-6 h-6" : "w-8 h-8"} text-[#1C1917] fill-current`} viewBox="0 0 64 64">
+            <path d="M28 48c0-8-5-14-11-14s-7 4-7 9c0 6 4 11 10 11 4 0 7-2 8-6zm-6-24c-2.2 0-4 1.8-4 4 0 1.2.5 2.3 1.4 3 .8-.5 1.7-.8 2.6-.8 1.4 0 2.7.7 3.5 1.7.3-.6.5-1.2.5-1.9 0-2.2-1.8-4-4-4zm-3-8l-3 7c1.3-.6 2.8-.9 4.3-.9 1.4 0 2.7.3 3.9.8l-2.2-6.9h-3z" />
+            <path d="M36 48c0-8 5-14 11-14s7 4 7 9c0 6-4 11-10 11-4 0-7-2-8-6zm6-24c2.2 0 4 1.8 4 4 0 1.2-.5 2.3-1.4 3-.8-.5-1.7-.8-2.6-.8-1.4 0-2.7.7-3.5 1.7-.3-.6-.5-1.2-.5-1.9 0-2.2 1.8-4 4-4zm3-8l3 7c-1.3-.6-2.8-.9-4.3-.9-1.4 0-2.7.3-3.9.8l2.2-6.9h3z" />
+          </svg>
+          <span className={`${size === "small" ? "text-xl" : "text-2xl md:text-3xl"} font-bold tracking-tight text-[#1C1917]`}>non</span>
+        </div>
+      </div>
+    );
+
+    // キャスト猫の写真
+    const CAST_PHOTOS = [
+      { name: "黒猫ちゃん", url: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=400&q=80" },
+      { name: "ラグドールちゃん", url: "https://images.unsplash.com/photo-1533738363-b7f9aef128ce?auto=format&fit=crop&w=400&q=80" }
+    ];
+
+    // 初期確認書データ
+    const INITIAL_AGREEMENT = {
+      version: "1.0.0",
+      title: "ご利用に関する確認書",
+      sections: [
+        {
+          id: "sec_1",
+          title: "第1項：ご利用にあたって",
+          checkText: "ご利用にあたっての内容を確認しました。",
+          content: "・ご利用時間は最短20分からとなります。\n・お子様からは目を離さず、必ず保護者の方のご同伴をお願いいたします。\n・他のお客様のご迷惑となる行為（大声・走る・騒ぐなど）はお控えください。\n・お子様が走り回る、大声を出すなどの場合は保護者様よりお声がけをお願いいたします。"
+        },
+        {
+          id: "sec_2",
+          title: "第2項：猫とのふれあいについて",
+          checkText: "猫とのふれあいについて確認しました。",
+          content: "・猫を抱き上げたり、無理に触れたりする行為はご遠慮ください。\n・猫が嫌がる・逃げる様子が見られた場合は、そっと距離を取っていただきますようお願いいたします。\n・食べ物の持ち込みはご遠慮ください。\n・猫が眠っているときや休んでいるときは、あたたかく見守っていただけますと幸いです。"
+        },
+        {
+          id: "sec_3",
+          title: "第3項：スタッフの案内へのご協力",
+          checkText: "スタッフの案内への協力について確認しました。",
+          content: "・猫や他のお客様の安全のためスタッフからのご案内・お願いにご協力をお願いいたします。\n・安全確保の観点から、やむを得ずご利用途中でも退店をお願いする場合がございます。"
+        },
+        {
+          id: "sec_4",
+          title: "第4項：写真・動画撮影について",
+          checkText: "写真・動画撮影について確認しました。",
+          content: "・撮影の際はフラッシュをOFFにし、他のお客様やスタッフが写り込まないようご配慮をお願いいたします。"
+        },
+        {
+          id: "sec_5",
+          title: "第5項：免責事項",
+          checkText: "免責事項について確認しました。",
+          content: "・猫による引っかき傷・噛みつき等については応急対応を行いますが、保証はいたしかねます。\n・貴重品はお客様ご自身での管理をお願いいたします。\n・盗難・紛失について当店では責任を負いかねます。\n・動物アレルギーをお持ちのお客様は十分ご注意の上、自己責任でご利用をお願いいたします。\n・ルールが守られなかったことに起因する事故があった場合は、当店では責任を負いかねます。"
+        },
+        {
+          id: "sec_6",
+          title: "第6項：個人情報の取り扱いについて",
+          checkText: "個人情報の取り扱いについて確認しました。",
+          content: "・ご利用者からお預かりした個人情報は、入店管理および安全確保の目的にのみ使用いたします。\n・個人情報は法令に基づき適切に管理し、第三者へ提供・開示することはございません。\n・漏えい・紛失・不正利用防止のため、適切な安全管理措置を講じてまいります。"
+        }
+      ]
+    };
+
+    // =========================================================================
+    // 【ステップ①】スタッフによる事前説明ページ（線引き・マーカー維持）
+    // =========================================================================
+    const StaffExplanationPage = ({ agreement, onFinishExplanation, onCancel }) => {
+      const scrollContainerRef = useRef(null);
+      const contentRef = useRef(null);
+      const canvasRef = useRef(null);
+
+      const [drawMode, setDrawMode] = useState(true);
+      const [toolColor, setToolColor] = useState('rgba(250, 204, 21, 0.45)');
+      const [lineWidth, setLineWidth] = useState(12);
+      const [history, setHistory] = useState([]);
+      const [redoList, setRedoList] = useState([]);
+      const [isDrawing, setIsDrawing] = useState(false);
+
+      const COLORS = [
+        { name: '黄マーカー', value: 'rgba(250, 204, 21, 0.45)', bg: 'bg-yellow-300' },
+        { name: '桃マーカー', value: 'rgba(244, 114, 182, 0.45)', bg: 'bg-pink-400' },
+        { name: '赤ペン', value: '#DC2626', bg: 'bg-red-600' },
+        { name: '青ペン', value: '#2563EB', bg: 'bg-blue-600' }
+      ];
+
+      useEffect(() => {
+        const updateCanvasSize = () => {
+          if (!contentRef.current || !canvasRef.current) return;
+          const rect = contentRef.current.getBoundingClientRect();
+          const canvas = canvasRef.current;
+          canvas.width = rect.width;
+          canvas.height = contentRef.current.scrollHeight;
+        };
+
+        updateCanvasSize();
+        window.addEventListener('resize', updateCanvasSize);
+        return () => window.removeEventListener('resize', updateCanvasSize);
+      }, [agreement]);
+
+      const pushHistory = () => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        setHistory(prev => [...prev, canvas.toDataURL()]);
+        setRedoList([]);
+      };
+
+      const getCanvasPoint = (e) => {
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: clientX - rect.left, y: clientY - rect.top };
+      };
+
+      const handleStartDraw = (e) => {
+        if (!drawMode) return;
+        e.preventDefault();
+        pushHistory();
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const { x, y } = getCanvasPoint(e);
+
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.strokeStyle = toolColor;
+        ctx.lineWidth = lineWidth;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        setIsDrawing(true);
+      };
+
+      const handleMoveDraw = (e) => {
+        if (!drawMode || !isDrawing) return;
+        e.preventDefault();
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const { x, y } = getCanvasPoint(e);
+
+        ctx.lineTo(x, y);
+        ctx.stroke();
+      };
+
+      const handleEndDraw = () => {
+        if (!drawMode || !isDrawing) return;
+        setIsDrawing(false);
+      };
+
+      const handleUndo = () => {
+        if (history.length === 0) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const currentData = canvas.toDataURL();
+        const previousData = history[history.length - 1];
+
+        setRedoList(prev => [...prev, currentData]);
+        setHistory(prev => prev.slice(0, prev.length - 1));
+
+        const img = new Image();
+        img.src = previousData;
+        img.onload = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+        };
+      };
+
+      const handleRedo = () => {
+        if (redoList.length === 0) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        const currentData = canvas.toDataURL();
+        const nextData = redoList[redoList.length - 1];
+
+        setHistory(prev => [...prev, currentData]);
+        setRedoList(prev => prev.slice(0, prev.length - 1));
+
+        const img = new Image();
+        img.src = nextData;
+        img.onload = () => {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+        };
+      };
+
+      const handleClearAll = () => {
+        if (!confirm('書き込んだマーカーや線をすべて消去しますか？')) return;
+        pushHistory();
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 bg-[#F4F1EA] flex flex-col select-none">
+          <div className="bg-[#1C1917] text-white px-4 py-2.5 flex justify-between items-center shadow-md flex-shrink-0">
+            <div className="flex items-center gap-2">
+              <span className="bg-amber-500 text-black text-[10px] font-bold px-2 py-0.5 rounded tracking-wide">
+                ① スタッフ説明
+              </span>
+              <span className="text-xs md:text-sm font-semibold tracking-wide">
+                ご利用前の事前説明（画面への直接線引き・マーカー対応）
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onCancel}
+                className="text-stone-300 hover:text-white text-xs px-2.5 py-1 rounded border border-stone-600 hover:bg-stone-800"
+              >
+                説明を中断
+              </button>
+              <button
+                type="button"
+                onClick={onFinishExplanation}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs md:text-sm px-4 py-1.5 rounded-lg shadow transition flex items-center gap-1.5"
+              >
+                <span>お客様の確認へ進む</span>
+                <span className="text-base leading-none">➔</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white border-b border-[#DDD5CA] px-4 py-2 shadow-sm flex flex-wrap justify-between items-center gap-3 flex-shrink-0">
+            <div className="flex items-center bg-stone-100 p-1 rounded-xl border border-stone-200">
+              <button
+                type="button"
+                onClick={() => setDrawMode(true)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                  drawMode ? 'bg-[#2D2A26] text-white shadow-sm' : 'text-stone-600 hover:bg-stone-200'
+                }`}
+              >
+                <span>✍️ 線を引く</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDrawMode(false)}
+                className={`px-3 py-1.5 text-xs font-bold rounded-lg transition flex items-center gap-1.5 ${
+                  !drawMode ? 'bg-[#2D2A26] text-white shadow-sm' : 'text-stone-600 hover:bg-stone-200'
+                }`}
+              >
+                <span>👆 画面スクロール</span>
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-bold text-stone-500">色:</span>
+              <div className="flex gap-1.5">
+                {COLORS.map((c) => (
+                  <button
+                    key={c.name}
+                    type="button"
+                    onClick={() => {
+                      setToolColor(c.value);
+                      if (!drawMode) setDrawMode(true);
+                      if (c.value.includes('rgba') && lineWidth < 8) setLineWidth(12);
+                    }}
+                    className={`px-2.5 py-1 text-xs rounded-lg font-medium border flex items-center gap-1.5 transition ${
+                      toolColor === c.value
+                        ? 'border-black ring-2 ring-stone-400 bg-stone-50 scale-105'
+                        : 'border-stone-200 bg-white hover:bg-stone-50'
+                    }`}
+                  >
+                    <span className={`w-3.5 h-3.5 rounded-full ${c.bg} border border-black/20`}></span>
+                    <span className="text-[11px]">{c.name}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-bold text-stone-500">太さ:</span>
+              {[
+                { label: '細', size: 3 },
+                { label: '中', size: 8 },
+                { label: '太', size: 16 }
+              ].map((w) => (
+                <button
+                  key={w.label}
+                  type="button"
+                  onClick={() => {
+                    setLineWidth(w.size);
+                    if (!drawMode) setDrawMode(true);
+                  }}
+                  className={`px-2.5 py-1 text-xs rounded-lg font-medium border transition ${
+                    lineWidth === w.size ? 'bg-stone-800 text-white border-black' : 'bg-white text-stone-600 border-stone-200'
+                  }`}
+                >
+                  {w.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={handleUndo}
+                disabled={history.length === 0}
+                className="px-2.5 py-1 text-xs border rounded-lg bg-stone-50 hover:bg-stone-100 disabled:opacity-30 font-medium"
+              >
+                ↩ 戻す
+              </button>
+              <button
+                type="button"
+                onClick={handleRedo}
+                disabled={redoList.length === 0}
+                className="px-2.5 py-1 text-xs border rounded-lg bg-stone-50 hover:bg-stone-100 disabled:opacity-30 font-medium"
+              >
+                ↪ やり直す
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAll}
+                className="px-2.5 py-1 text-xs border border-red-200 text-red-600 rounded-lg bg-red-50 hover:bg-red-100 font-medium"
+              >
+                全消去
+              </button>
+            </div>
+          </div>
+
+          <div
+            ref={scrollContainerRef}
+            className={`flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar relative ${
+              drawMode ? 'touch-none' : 'touch-pan-y'
+            }`}
+          >
+            <div
+              ref={contentRef}
+              className="max-w-3xl mx-auto bg-white rounded-2xl p-6 md:p-10 shadow-md border border-[#E5DDD2] relative"
+            >
+              <canvas
+                ref={canvasRef}
+                onMouseDown={handleStartDraw}
+                onMouseMove={handleMoveDraw}
+                onMouseUp={handleEndDraw}
+                onMouseLeave={handleEndDraw}
+                onTouchStart={handleStartDraw}
+                onTouchMove={handleMoveDraw}
+                onTouchEnd={handleEndDraw}
+                className={`absolute inset-0 w-full h-full z-20 ${
+                  drawMode ? 'cursor-crosshair pointer-events-auto' : 'pointer-events-none'
+                }`}
+              />
+
+              <div className="relative z-10 space-y-6">
+                <div className="text-center pb-4 border-b border-[#EAE3DA]">
+                  <BrandLogo size="small" />
+                  <h1 className="text-2xl font-bold text-[#1C1917] mt-3">{agreement.title}</h1>
+                  <p className="text-xs text-stone-500 mt-1">Ver. {agreement.version} （スタッフ事前説明用）</p>
+                  <p className="text-xs text-amber-800 bg-amber-50 inline-block px-3 py-1 rounded-full border border-amber-200 mt-2 font-medium">
+                    ※ 重要事項に線やマーカーを引きながらお客様へご説明ください
+                  </p>
+                </div>
+
+                <div className="space-y-6">
+                  {agreement.sections.map((sec) => (
+                    <div
+                      key={sec.id}
+                      className="p-5 rounded-xl border border-[#E8E2D8] bg-[#FDFBF7]"
+                    >
+                      <h2 className="text-lg font-bold text-[#1C1917] mb-2">{sec.title}</h2>
+                      <p className="text-base text-[#3A3633] leading-relaxed whitespace-pre-line pl-1 font-normal">
+                        {sec.content}
+                      </p>
+                      <div className="mt-3 pt-3 border-t border-[#F0EBE1] text-xs font-bold text-stone-500">
+                        【確認チェック予定項目】 {sec.checkText}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-5 rounded-xl border border-stone-200 bg-stone-50 space-y-2">
+                  <h3 className="font-bold text-sm text-stone-700">写真・動画撮影の個別同意（任意項目）</h3>
+                  <p className="text-xs text-stone-600 leading-relaxed">
+                    ① スタッフによる店内風景・写真撮影への同意<br />
+                    ② 当店公式SNSやHPへの写真掲載への同意<br />
+                    ※上記は任意同意項目であり、説明後にお客様ご自身に個別に選択していただきます。
+                  </p>
+                </div>
+
+                <div className="pt-6 border-t border-stone-200 text-center">
+                  <button
+                    type="button"
+                    onClick={onFinishExplanation}
+                    className="w-full py-4 bg-[#2D2A26] hover:bg-black text-white font-bold text-base rounded-xl shadow-lg transition active:scale-[0.99]"
+                  >
+                    説明を終えて「② お客様による確認ページ」へ進む ➔
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // =========================================================================
+    // メインアプリケーション
+    // =========================================================================
+    function App() {
+      const [currentAgreement, setCurrentAgreement] = useState(INITIAL_AGREEMENT);
+      const [records, setRecords] = useState([]);
+      const [isDBLoaded, setIsDBLoaded] = useState(false);
+      
+      const [activeView, setActiveView] = useState('customer');
+      const [customerFlowStep, setCustomerFlowStep] = useState('not_started');
+
+      const [checks, setChecks] = useState({});
+      const [staffPhotoConsent, setStaffPhotoConsent] = useState(null);
+      const [snsPhotoConsent, setSnsPhotoConsent] = useState(null);
+      
+      // 【一本化】お客様のお名前入力欄（お客様署名）
+      const [signatureName, setSignatureName] = useState('');
+      
+      const [completedRecord, setCompletedRecord] = useState(null);
+      const [isSaving, setIsSaving] = useState(false);
+
+      // パスワード認証ステート
+      const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+      const [showPasswordModal, setShowPasswordModal] = useState(false);
+      const [inputPassword, setInputPassword] = useState('');
+      const [adminPassword, setAdminPassword] = useState(() => {
+        return localStorage.getItem('nonnon_admin_pwd') || 'nonnon1234';
+      });
+
+      // 管理画面用ステート
+      const [adminTab, setAdminTab] = useState('records');
+      const [searchQuery, setSearchQuery] = useState('');
+      const [selectedRecordModal, setSelectedRecordModal] = useState(null);
+
+      // 約款編集用ステート
+      const [editTitle, setEditTitle] = useState(currentAgreement.title);
+      const [editVersion, setEditVersion] = useState("1.1.0");
+      const [editSections, setEditSections] = useState(JSON.parse(JSON.stringify(currentAgreement.sections)));
+
+      const fileInputRef = useRef(null);
+
+      useEffect(() => {
+        const loadStoredData = async () => {
+          try {
+            if (navigator.storage && navigator.storage.persist) {
+              await navigator.storage.persist();
+            }
+            const storedRecords = await getAllRecordsFromDB();
+            setRecords(storedRecords);
+            setIsDBLoaded(true);
+          } catch (err) {
+            console.error('IndexedDBの読み込みエラー:', err);
+            alert('端末内データベースの初期化に失敗しました。Safariのプライベートブラウズモードが解除されているかご確認ください。');
+            setIsDBLoaded(true);
+          }
+        };
+        loadStoredData();
+      }, []);
+
+      const allChecked = currentAgreement.sections.every(sec => checks[sec.id]);
+
+      const handleStartStaffExplanation = () => {
+        setChecks({});
+        setStaffPhotoConsent(null);
+        setSnsPhotoConsent(null);
+        setSignatureName('');
+        setActiveView('staff_explaining');
+      };
+
+      const handleFinishExplanation = () => {
+        setActiveView('customer');
+        setCustomerFlowStep('read');
+      };
+
+      // 文字入力式「お客様署名」の送信・保存ハンドラ
+      const handleCustomerSubmit = async () => {
+        if (!signatureName || signatureName.trim() === '') {
+          alert('「お客様署名」欄にご本人のお名前を入力してください。');
+          return;
+        }
+
+        setIsSaving(true);
+        const now = new Date();
+        const jstTime = now.toLocaleDateString('ja-JP', {
+          year: 'numeric', month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+
+        const trimmedName = signatureName.trim();
+        const newRecord = {
+          id: 'REC-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
+          timestamp: Date.now(),
+          customer_name: trimmedName, // 一本化したお名前を顧客氏名兼署名として保存
+          signature_name: trimmedName,
+          guardian_name: null,
+          agreement_title: currentAgreement.title,
+          agreement_version: currentAgreement.version,
+          agreement_snapshot: JSON.parse(JSON.stringify(currentAgreement)),
+          staff_photo_consent: staffPhotoConsent,
+          sns_photo_consent: snsPhotoConsent,
+          agreed_at: jstTime,
+          checks: checks
+        };
+
+        try {
+          await addRecordToDB(newRecord);
+          setRecords(prev => [newRecord, ...prev]);
+          setCompletedRecord(newRecord);
+          setIsSaving(false);
+          setCustomerFlowStep('done');
+        } catch (error) {
+          console.error('端末内保存失敗:', error);
+          setIsSaving(false);
+          alert('【エラー】iPad端末内への署名記録の保存に失敗しました。端末の空き容量を確認し、再度お試しください。');
+        }
+      };
+
+      const handleSwitchToAdmin = () => {
+        if (isAdminAuthenticated) {
+          setActiveView('admin');
+        } else {
+          setInputPassword('');
+          setShowPasswordModal(true);
+        }
+      };
+
+      const handlePasswordSubmit = (e) => {
+        e.preventDefault();
+        if (inputPassword === adminPassword) {
+          setIsAdminAuthenticated(true);
+          setShowPasswordModal(false);
+          setActiveView('admin');
+        } else {
+          alert('パスワードが正しくありません。');
+        }
+      };
+
+      const handlePublishAgreement = () => {
+        if (!editTitle.trim()) {
+          alert('確認書のタイトルを入力してください。');
+          return;
+        }
+        if (editSections.length === 0) {
+          alert('少なくとも1つ以上の項目が必要です。');
+          return;
+        }
+        const updated = {
+          version: editVersion,
+          title: editTitle,
+          sections: editSections
+        };
+        setCurrentAgreement(updated);
+        
+        const nextParts = editVersion.split('.');
+        if (nextParts.length === 3) {
+          nextParts[2] = String(Number(nextParts[2]) + 1);
+          setEditVersion(nextParts.join('.'));
+        }
+        alert(`確認書を【Ver.${updated.version}】として公開しました。過去の署名記録には影響しません。`);
+      };
+
+      const handleExportCSV = () => {
+        if (records.length === 0) {
+          alert('出力する署名記録がありません。');
+          return;
+        }
+        const header = ['ID', '同意日時', 'お客様署名(氏名)', '規約Ver', 'スタッフ撮影同意', 'SNS掲載同意'];
+        const rows = records.map(r => [
+          r.id,
+          r.agreed_at,
+          `"${r.customer_name}"`,
+          r.agreement_version,
+          r.staff_photo_consent ? '同意' : '拒否',
+          r.sns_photo_consent ? '同意' : '拒否'
+        ]);
+        const csvContent = '\uFEFF' + [header, ...rows].map(e => e.join(',')).join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `nonnon_records_${new Date().toISOString().slice(0,10)}.csv`;
+        a.click();
+      };
+
+      const handleExportFullBackup = () => {
+        if (records.length === 0) {
+          alert('バックアップする記録がありません。');
+          return;
+        }
+        const backupData = {
+          export_date: new Date().toISOString(),
+          version: "1.0",
+          records: records
+        };
+        const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `nonnon_full_backup_${new Date().toISOString().slice(0,10)}.json`;
+        a.click();
+      };
+
+      const handleImportBackup = (e) => {
+        const file = e.target.files && e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+          try {
+            const parsed = JSON.parse(event.target.result);
+            if (!parsed.records || !Array.isArray(parsed.records)) {
+              throw new Error('バックアップファイルの形式が正しくありません。');
+            }
+            if (confirm(`${parsed.records.length} 件の記録をiPad内に復元しますか？`)) {
+              await importRecordsToDB(parsed.records);
+              const reloaded = await getAllRecordsFromDB();
+              setRecords(reloaded);
+              alert('バックアップからの復元が正常に完了しました。');
+            }
+          } catch (err) {
+            console.error(err);
+            alert('復元に失敗しました。有効なバックアップファイル（JSON）を選択してください。');
+          } finally {
+            if (fileInputRef.current) fileInputRef.current.value = '';
+          }
+        };
+        reader.readAsText(file);
+      };
+
+      return (
+        <div className="min-h-screen flex flex-col justify-between selection:bg-[#EAE4DC]">
+          {/* 右下 固定スイッチャー */}
+          <div className="fixed bottom-4 right-4 z-40 no-print flex flex-col gap-2 items-end">
+            {activeView === 'admin' && (
+              <button
+                type="button"
+                onClick={handleStartStaffExplanation}
+                className="bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold px-4 py-2.5 rounded-full shadow-xl border border-amber-400 transition flex items-center gap-1.5"
+              >
+                <span>① 事前説明を開始する</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (activeView === 'customer') {
+                  handleSwitchToAdmin();
+                } else {
+                  setActiveView('customer');
+                }
+              }}
+              className="bg-[#2D2A26] text-[#FAF8F5] text-xs font-medium px-4 py-2.5 rounded-full shadow-lg border border-[#D5CDC5] hover:bg-black transition flex items-center gap-2"
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              {activeView === 'customer' ? '店舗スタッフ管理画面へ' : '受付・確認画面に戻る'}
+            </button>
+          </div>
+
+          {/* パスワード認証モーダル */}
+          {showPasswordModal && (
+            <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+              <div className="bg-white rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-xl">
+                <div className="text-center">
+                  <h3 className="font-bold text-base text-stone-800">スタッフ専用パスワード入力</h3>
+                  <p className="text-xs text-stone-500 mt-1">管理画面に入るためのパスワードを入力してください</p>
+                </div>
+                <form onSubmit={handlePasswordSubmit} className="space-y-4">
+                  <input
+                    type="password"
+                    placeholder="パスワード (初期値: nonnon1234)"
+                    value={inputPassword}
+                    onChange={(e) => setInputPassword(e.target.value)}
+                    autoFocus
+                    className="w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:border-stone-800 bg-stone-50"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowPasswordModal(false)}
+                      className="flex-1 py-2 text-xs border border-stone-300 rounded-lg hover:bg-stone-100"
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      type="submit"
+                      className="flex-1 py-2 text-xs bg-stone-900 text-white font-bold rounded-lg hover:bg-black"
+                    >
+                      認証
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* ① スタッフによる事前説明ページ */}
+          {activeView === 'staff_explaining' && (
+            <StaffExplanationPage
+              agreement={currentAgreement}
+              onFinishExplanation={handleFinishExplanation}
+              onCancel={() => setActiveView('admin')}
+            />
+          )}
+
+          {/* お客様向け画面群 */}
+          {activeView === 'customer' && (
+            <div className="flex-1 flex flex-col justify-between">
+              <header className="border-b border-[#EAE3DA] bg-[#FAF8F5]/90 backdrop-blur sticky top-0 z-30 py-3.5">
+                <div className="max-w-xl mx-auto px-4 flex justify-center">
+                  <BrandLogo size="small" />
+                </div>
+              </header>
+
+              <main className="max-w-xl mx-auto px-4 py-6 w-full flex-1">
+                {/* 初期待機画面 */}
+                {customerFlowStep === 'not_started' && (
+                  <div className="text-center space-y-6 pt-4 animate-fade-in">
+                    <div className="mx-auto w-24 h-24 rounded-full overflow-hidden border-2 border-[#D5CDC5] shadow-sm bg-white">
+                      <img
+                        src={CAST_PHOTOS[0].url}
+                        alt="Cast Cat"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <p className="text-xs tracking-widest text-[#78716C]">CAT LOUNGE nonnon</p>
+                      <h1 className="text-2xl font-bold text-[#1C1917]">ご来店ありがとうございます</h1>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-2xl border border-[#EAE3DA] shadow-sm text-left space-y-3">
+                      <div className="flex items-center gap-2 text-amber-800 bg-amber-50 px-3 py-2 rounded-lg border border-amber-200">
+                        <span className="text-base font-bold">ℹ️</span>
+                        <p className="text-xs font-bold">
+                          スタッフより重要事項をご案内いたします
+                        </p>
+                      </div>
+                      <p className="text-sm text-[#59534E] leading-relaxed">
+                        猫ちゃんたちとお客様が安心して心地よい時間を過ごせるよう、ご入店前にスタッフより利用ルールをご案内いたします。
+                      </p>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        onClick={handleStartStaffExplanation}
+                        className="w-full py-4 bg-[#2D2A26] text-white font-bold rounded-xl shadow hover:bg-black transition active:scale-[0.99] text-base"
+                      >
+                        ① スタッフによる事前説明を開始する
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ② お客様による確認書の確認ページ */}
+                {customerFlowStep === 'read' && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="text-center space-y-1">
+                      <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                        ② お客様による確認ページ
+                      </span>
+                      <h2 className="text-xl font-bold text-[#1C1917] mt-1">{currentAgreement.title}</h2>
+                      <p className="text-xs text-[#78716C]">Ver. {currentAgreement.version}</p>
+                    </div>
+
+                    <div className="p-4 bg-white rounded-xl border border-[#EAE3DA] shadow-sm text-xs text-[#59534E] leading-relaxed">
+                      スタッフより説明を受けました内容について、改めて確認書の全文をご確認ください。ご確認後、下部のボタンより同意・署名ページへお進みいただけます。
+                    </div>
+
+                    <div className="space-y-4">
+                      {currentAgreement.sections.map((sec) => (
+                        <div
+                          key={sec.id}
+                          className="p-5 rounded-xl border border-[#E5DDD2] bg-white shadow-sm space-y-2"
+                        >
+                          <h3 className="font-bold text-base text-[#1C1917]">{sec.title}</h3>
+                          <p className="text-sm text-[#44403C] leading-relaxed whitespace-pre-line pl-1">
+                            {sec.content}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        onClick={() => setCustomerFlowStep('consent_sign')}
+                        className="w-full py-4 bg-[#2D2A26] text-white font-bold rounded-xl shadow hover:bg-black transition active:scale-[0.99] text-base"
+                      >
+                        内容を確認しました（③ 同意・署名へ進む） ➔
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ③ お客様の同意・お客様署名ページ（名前入力欄は1か所のみ） */}
+                {customerFlowStep === 'consent_sign' && (
+                  <div className="space-y-6 animate-fade-in">
+                    <div className="text-center space-y-1">
+                      <span className="text-[11px] font-bold text-amber-800 bg-amber-50 px-2.5 py-0.5 rounded-full border border-amber-200">
+                        ③ 同意・署名ページ
+                      </span>
+                      <h2 className="text-xl font-bold text-[#1C1917] mt-1">利用規約への同意とご署名</h2>
+                      <p className="text-xs text-[#78716C]">各項目を確認し、チェックとお名前のご入力をお願いいたします</p>
+                    </div>
+
+                    {/* 同意事項チェックボックス */}
+                    <div className="space-y-3 bg-white p-5 rounded-xl border border-[#EAE3DA] shadow-sm">
+                      <h3 className="font-bold text-sm text-[#1C1917] border-b border-[#F0EBE1] pb-2">
+                        同意事項の確認チェック <span className="text-red-500 text-xs">（すべて必須）</span>
+                      </h3>
+                      {currentAgreement.sections.map((sec) => {
+                        const isChecked = !!checks[sec.id];
+                        return (
+                          <label
+                            key={sec.id}
+                            className={`flex items-start gap-3 p-3 rounded-lg border transition cursor-pointer select-none ${
+                              isChecked ? 'bg-[#FAF8F5] border-[#C4B9AC]' : 'bg-stone-50 border-stone-200'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => setChecks(prev => ({ ...prev, [sec.id]: !prev[sec.id] }))}
+                              className="w-5 h-5 mt-0.5 rounded border-[#B8AEA3] text-[#2D2A26] focus:ring-0 cursor-pointer"
+                            />
+                            <span className={`text-xs md:text-sm font-medium ${isChecked ? 'text-[#1C1917]' : 'text-stone-500'}`}>
+                              {sec.checkText}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {/* 撮影に関する個別同意（任意項目） */}
+                    <div className="bg-white p-5 rounded-xl border border-[#EAE3DA] shadow-sm space-y-4">
+                      <h3 className="font-bold text-sm text-[#1C1917] border-b border-[#F0EBE1] pb-2">
+                        写真・動画撮影に関する個別同意（任意）
+                      </h3>
+
+                      <div>
+                        <p className="text-xs font-medium text-stone-700 mb-2">
+                          ① 店舗スタッフによる写真・動画撮影
+                        </p>
+                        <div className="flex gap-6">
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="staff_consent"
+                              checked={staffPhotoConsent === true}
+                              onChange={() => setStaffPhotoConsent(true)}
+                              className="text-[#2D2A26] focus:ring-0"
+                            />
+                            同意する
+                          </label>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="staff_consent"
+                              checked={staffPhotoConsent === false}
+                              onChange={() => setStaffPhotoConsent(false)}
+                              className="text-[#2D2A26] focus:ring-0"
+                            />
+                            同意しない
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-[#F0EBE1]">
+                        <p className="text-xs font-medium text-stone-700 mb-2">
+                          ② 店舗SNS・ホームページへの写真掲載
+                        </p>
+                        <div className="flex gap-6">
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="sns_consent"
+                              checked={snsPhotoConsent === true}
+                              onChange={() => setSnsPhotoConsent(true)}
+                              className="text-[#2D2A26] focus:ring-0"
+                            />
+                            同意する
+                          </label>
+                          <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <input
+                              type="radio"
+                              name="sns_consent"
+                              checked={snsPhotoConsent === false}
+                              onChange={() => setSnsPhotoConsent(false)}
+                              className="text-[#2D2A26] focus:ring-0"
+                            />
+                            同意しない
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ===【唯一の入力欄：お客様署名】=== */}
+                    <div className="bg-white p-5 rounded-xl border-2 border-[#C4B9AC] shadow-sm space-y-3">
+                      <div className="border-b border-[#F0EBE1] pb-2">
+                        <h3 className="font-bold text-base text-[#1C1917] flex items-center justify-between">
+                          <span>お客様署名</span>
+                          <span className="text-xs text-red-500 font-bold bg-red-50 px-2 py-0.5 rounded border border-red-200">
+                            ※必須入力
+                          </span>
+                        </h3>
+                        <p className="text-xs text-stone-600 mt-2 leading-relaxed">
+                          「私は、スタッフからの説明を受け、確認書の内容を十分に理解したうえで同意いたします。」
+                        </p>
+                      </div>
+
+                      <div className="space-y-1.5 pt-1">
+                        <input
+                          type="text"
+                          value={signatureName}
+                          onChange={(e) => setSignatureName(e.target.value)}
+                          placeholder="ご本人のお名前を入力してください"
+                          className="w-full px-4 py-3 text-base font-bold border-2 border-[#DDD5CA] rounded-xl bg-stone-50 focus:bg-white focus:outline-none focus:border-[#1C1917] transition shadow-inner"
+                        />
+                        <p className="text-[11px] text-stone-500">
+                          ※ 確認書の同意および入店記録として、上記枠内にご本人のお名前をご入力ください。
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => setCustomerFlowStep('read')}
+                        className="w-1/3 py-3.5 border border-[#D5CDC5] rounded-xl text-sm font-medium hover:bg-stone-100"
+                      >
+                        戻る
+                      </button>
+                      <button
+                        onClick={handleCustomerSubmit}
+                        disabled={isSaving || !allChecked || !signatureName.trim() || staffPhotoConsent === null || snsPhotoConsent === null}
+                        className={`flex-1 py-3.5 rounded-xl text-sm font-bold shadow transition ${
+                          !isSaving && allChecked && signatureName.trim() && staffPhotoConsent !== null && snsPhotoConsent !== null
+                            ? 'bg-[#2D2A26] text-white hover:bg-black cursor-pointer'
+                            : 'bg-[#D6CFC7] text-[#8C847B] cursor-not-allowed'
+                        }`}
+                      >
+                        {isSaving ? 'iPad本体へ保存中...' : '同意して署名を送信する'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ④ 完了画面 */}
+                {customerFlowStep === 'done' && completedRecord && (
+                  <div className="text-center space-y-6 pt-4 animate-fade-in">
+                    <div className="w-14 h-14 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
+                      ✓
+                    </div>
+                    <div className="space-y-1">
+                      <h2 className="text-2xl font-bold text-[#1C1917]">ご確認・ご署名ありがとうございます</h2>
+                      <p className="text-sm text-[#59534E]">猫ちゃんたちと素敵な時間をお過ごしください。</p>
+                    </div>
+
+                    <div className="bg-white p-5 rounded-xl border border-[#EAE3DA] max-w-sm mx-auto text-left space-y-2 text-xs">
+                      <div className="flex items-center gap-1.5 text-emerald-700 font-bold border-b pb-1.5">
+                        <span>✓</span> スタッフによる重要事項の説明完了済み
+                      </div>
+                      <div className="text-stone-600">受付完了日時：{completedRecord.agreed_at}</div>
+                      <div className="text-stone-600">確認書バージョン：Ver. {completedRecord.agreement_version}</div>
+                      <div className="text-stone-800 pt-1 border-t flex justify-between items-center">
+                        <span className="text-stone-500">お客様署名：</span>
+                        <span className="font-bold text-sm bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
+                          {completedRecord.customer_name} 様
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="mx-auto w-24 h-24 rounded-full overflow-hidden border border-[#D5CDC5] shadow-sm bg-white">
+                      <img
+                        src={CAST_PHOTOS[1].url}
+                        alt="Cat"
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+
+                    <div className="pt-4">
+                      <button
+                        onClick={() => {
+                          setChecks({});
+                          setStaffPhotoConsent(null);
+                          setSnsPhotoConsent(null);
+                          setSignatureName('');
+                          setCustomerFlowStep('not_started');
+                        }}
+                        className="px-6 py-2.5 bg-stone-200 text-stone-700 rounded-xl text-xs hover:bg-stone-300 transition"
+                      >
+                        受付初期画面へ戻る
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </main>
+
+              <footer className="py-4 text-center text-[11px] text-stone-400 border-t border-[#EAE3DA]">
+                &copy; CAT LOUNGE nonnon. All rights reserved.
+              </footer>
+            </div>
+          )}
+
+          {/* ============================================================== */}
+          {/* 2. 店舗管理者用 画面 */}
+          {/* ============================================================== */}
+          {activeView === 'admin' && (
+            <div className="flex-1 flex flex-col bg-[#F3EFEA]">
+              <header className="bg-[#1C1917] text-white px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-md no-print">
+                <div className="flex items-center gap-3">
+                  <div className="bg-white px-2 py-1 rounded">
+                    <BrandLogo size="small" />
+                  </div>
+                  <div>
+                    <h1 className="text-sm md:text-base font-bold">店舗管理システム（iPad本体保存版）</h1>
+                    <p className="text-[11px] text-stone-400">端末内IndexedDB保管 / お客様署名一本化</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={handleStartStaffExplanation}
+                    className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg text-xs shadow transition flex items-center gap-1.5"
+                  >
+                    <span>📋 ① 事前説明を開始して受付</span>
+                  </button>
+
+                  <button
+                    onClick={() => setAdminTab('records')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${adminTab === 'records' ? 'bg-stone-700 text-white' : 'text-stone-300 hover:bg-stone-800'}`}
+                  >
+                    署名記録 ({records.length})
+                  </button>
+                  <button
+                    onClick={() => setAdminTab('edit')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${adminTab === 'edit' ? 'bg-stone-700 text-white' : 'text-stone-300 hover:bg-stone-800'}`}
+                  >
+                    確認書の編集・版管理
+                  </button>
+                  <button
+                    onClick={() => setAdminTab('backup')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${adminTab === 'backup' ? 'bg-stone-700 text-white' : 'text-stone-300 hover:bg-stone-800'}`}
+                  >
+                    データ管理・復元
+                  </button>
+                </div>
+              </header>
+
+              <main className="p-4 md:p-6 flex-1 max-w-6xl w-full mx-auto">
+                {/* 署名記録一覧 */}
+                {adminTab === 'records' && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-white p-4 rounded-xl border border-[#DDD5CA] shadow-sm">
+                      <div className="w-full sm:w-72">
+                        <input
+                          type="text"
+                          placeholder="お客様署名、日付で検索..."
+                          value={searchQuery}
+                          onChange={(e) => setSearchQuery(e.target.value)}
+                          className="w-full border border-stone-300 rounded-lg px-3 py-2 text-xs bg-stone-50 focus:outline-none"
+                        />
+                      </div>
+                      <div className="flex gap-2 w-full sm:w-auto">
+                        <button
+                          onClick={handleExportCSV}
+                          className="flex-1 sm:flex-initial px-3 py-2 bg-stone-200 text-stone-800 hover:bg-stone-300 text-xs font-medium rounded-lg transition"
+                        >
+                          CSVエクスポート
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl border border-[#DDD5CA] shadow-sm overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-[#FAF8F5] border-b text-stone-500 font-medium">
+                          <tr>
+                            <th className="p-3">同意日時</th>
+                            <th className="p-3">お客様署名（お名前）</th>
+                            <th className="p-3">版 (Ver)</th>
+                            <th className="p-3">スタッフ撮影</th>
+                            <th className="p-3">SNS掲載</th>
+                            <th className="p-3 text-right">操作</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-stone-100">
+                          {records
+                            .filter(r => 
+                              r.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                              r.agreed_at.includes(searchQuery)
+                            )
+                            .map((r) => (
+                              <tr key={r.id} className="hover:bg-stone-50 transition">
+                                <td className="p-3 font-mono text-stone-600">{r.agreed_at}</td>
+                                <td className="p-3 font-bold text-stone-800 text-sm">{r.customer_name}</td>
+                                <td className="p-3 text-stone-500">{r.agreement_version}</td>
+                                <td className="p-3">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] ${r.staff_photo_consent ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-600'}`}>
+                                    {r.staff_photo_consent ? '同意' : '拒否'}
+                                  </span>
+                                </td>
+                                <td className="p-3">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] ${r.sns_photo_consent ? 'bg-emerald-50 text-emerald-700' : 'bg-stone-100 text-stone-600'}`}>
+                                    {r.sns_photo_consent ? '同意' : '拒否'}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-right">
+                                  <button
+                                    onClick={() => setSelectedRecordModal(r)}
+                                    className="px-2.5 py-1 bg-stone-100 text-stone-700 rounded hover:bg-stone-200"
+                                  >
+                                    詳細 / 印刷
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          {records.length === 0 && (
+                            <tr>
+                              <td colSpan={6} className="text-center p-8 text-stone-400">
+                                iPad内に署名記録がまだありません（「①事前説明を開始」から受付を行ってください）
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* 確認書編集・版管理 */}
+                {adminTab === 'edit' && (
+                  <div className="bg-white p-6 rounded-xl border border-[#DDD5CA] shadow-sm space-y-6">
+                    <div className="border-b pb-4">
+                      <h2 className="text-base font-bold text-stone-800">確認書・約款の編集 & 新バージョン公開</h2>
+                      <p className="text-xs text-stone-500 mt-1">
+                        内容を修正して公開すると、事前説明画面およびお客様確認画面の双方が即時アップデートされます。過去の署名データには影響しません。
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-bold text-stone-600 mb-1">確認書タイトル</label>
+                        <input
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2 text-xs bg-stone-50"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-bold text-stone-600 mb-1">更新バージョン番号</label>
+                        <input
+                          type="text"
+                          value={editVersion}
+                          onChange={(e) => setEditVersion(e.target.value)}
+                          className="w-full border rounded-lg px-3 py-2 text-xs bg-stone-50"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-bold text-stone-700">各項目の編集・追加・削除</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newId = 'sec_' + (editSections.length + 1);
+                            setEditSections([
+                              ...editSections,
+                              {
+                                id: newId,
+                                title: `第${editSections.length + 1}項：新規項目`,
+                                checkText: '上記の内容を確認しました。',
+                                content: '・利用ルールや注意事項を記入してください。'
+                              }
+                            ]);
+                          }}
+                          className="text-xs bg-stone-800 text-white px-3 py-1.5 rounded-lg hover:bg-black transition"
+                        >
+                          ＋ 項目を追加
+                        </button>
+                      </div>
+
+                      {editSections.map((sec, idx) => (
+                        <div key={sec.id} className="border border-stone-200 p-4 rounded-xl bg-stone-50 space-y-2">
+                          <div className="flex justify-between items-center gap-2">
+                            <input
+                              type="text"
+                              value={sec.title}
+                              onChange={(e) => {
+                                const list = [...editSections];
+                                list[idx].title = e.target.value;
+                                setEditSections(list);
+                              }}
+                              className="font-bold text-xs border rounded px-2 py-1 w-full bg-white"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (editSections.length <= 1) {
+                                  alert('全ての項目を削除することはできません。');
+                                  return;
+                                }
+                                if (confirm('この項目を削除してもよろしいですか？')) {
+                                  const list = [...editSections];
+                                  list.splice(idx, 1);
+                                  setEditSections(list);
+                                }
+                              }}
+                              className="text-red-500 hover:text-red-700 text-xs px-2 py-1 rounded bg-red-50"
+                            >
+                              削除
+                            </button>
+                          </div>
+                          <textarea
+                            rows={3}
+                            value={sec.content}
+                            onChange={(e) => {
+                              const list = [...editSections];
+                              list[idx].content = e.target.value;
+                              setEditSections(list);
+                            }}
+                            className="w-full border rounded-lg p-2 text-xs bg-white"
+                          />
+                          <input
+                            type="text"
+                            value={sec.checkText}
+                            onChange={(e) => {
+                              const list = [...editSections];
+                              list[idx].checkText = e.target.value;
+                              setEditSections(list);
+                            }}
+                            placeholder="確認チェック文言"
+                            className="w-full border rounded px-2 py-1 text-xs bg-white text-stone-600"
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={handlePublishAgreement}
+                        className="px-6 py-3 bg-[#2D2A26] text-white rounded-xl text-sm font-medium hover:bg-black transition shadow"
+                      >
+                        新バージョンとして公開する
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* データ管理・バックアップ・復元・パスワード設定 */}
+                {adminTab === 'backup' && (
+                  <div className="space-y-6">
+                    <div className="bg-white p-6 rounded-xl border border-[#DDD5CA] shadow-sm space-y-4">
+                      <h2 className="text-base font-bold text-stone-800">iPad本体内データのバックアップと復元</h2>
+                      <p className="text-xs text-stone-500 leading-relaxed">
+                        署名記録データをiPadの「ファイル」アプリまたは外付けドライブに保存できます。別のiPadへの移行や故障時の備えとしてご利用ください。
+                      </p>
+
+                      <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                        <button
+                          type="button"
+                          onClick={handleExportFullBackup}
+                          className="px-4 py-2.5 bg-stone-800 hover:bg-black text-white text-xs font-bold rounded-lg shadow transition"
+                        >
+                          📦 完全バックアップファイルを保存 (JSON)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                          className="px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white text-xs font-bold rounded-lg shadow transition"
+                        >
+                          📥 バックアップファイルから復元する
+                        </button>
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".json"
+                          onChange={handleImportBackup}
+                          className="hidden"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="bg-white p-6 rounded-xl border border-[#DDD5CA] shadow-sm space-y-4">
+                      <h2 className="text-base font-bold text-stone-800">管理画面パスワードの変更</h2>
+                      <div className="max-w-xs space-y-3">
+                        <input
+                          type="text"
+                          defaultValue={adminPassword}
+                          id="newAdminPwd"
+                          placeholder="新しいパスワード"
+                          className="w-full px-3 py-2 text-xs border rounded-lg bg-stone-50 focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const val = document.getElementById('newAdminPwd').value;
+                            if (val.trim()) {
+                              setAdminPassword(val.trim());
+                              localStorage.setItem('nonnon_admin_pwd', val.trim());
+                              alert('管理画面パスワードを更新しました。');
+                            }
+                          }}
+                          className="px-4 py-2 bg-stone-700 hover:bg-stone-900 text-white text-xs rounded-lg font-medium"
+                        >
+                          パスワードを保存
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </main>
+
+              {/* 署名控え モーダル & 印刷対応 */}
+              {selectedRecordModal && (
+                <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+                  <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 space-y-4">
+                    <div className="flex justify-between items-center border-b pb-3 no-print">
+                      <h3 className="font-bold text-base">署名済み確認書 控え</h3>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => window.print()}
+                          className="px-3 py-1 bg-stone-800 text-white rounded text-xs font-bold"
+                        >
+                          印刷 / PDF出力
+                        </button>
+                        <button
+                          onClick={() => setSelectedRecordModal(null)}
+                          className="px-3 py-1 bg-stone-200 text-stone-700 rounded text-xs"
+                        >
+                          閉じる
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="text-center py-2 border-b">
+                      <BrandLogo size="small" />
+                      <h2 className="text-lg font-bold mt-2">{selectedRecordModal.agreement_title}</h2>
+                      <p className="text-xs text-stone-500">版：Ver. {selectedRecordModal.agreement_version} / 受理ID: {selectedRecordModal.id}</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs bg-stone-50 p-3 rounded-lg border">
+                      <div>署名日時：{selectedRecordModal.agreed_at}</div>
+                      <div>お客様署名：<b>{selectedRecordModal.customer_name}</b> 様</div>
+                      <div>スタッフ撮影：{selectedRecordModal.staff_photo_consent ? '同意' : '不同意'}</div>
+                      <div>SNS/HP掲載：{selectedRecordModal.sns_photo_consent ? '同意' : '不同意'}</div>
+                    </div>
+
+                    {/* お客様署名（文字入力）表示枠 */}
+                    <div className="border-2 border-[#DDD5CA] p-4 rounded-xl bg-stone-50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                      <div>
+                        <p className="text-xs font-bold text-stone-500">お客様署名</p>
+                        <p className="text-lg font-bold text-stone-900 mt-0.5">
+                          {selectedRecordModal.customer_name} 様
+                        </p>
+                      </div>
+                      <span className="text-[11px] text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200 font-medium">
+                        ✓ 本人署名確認済み
+                      </span>
+                    </div>
+
+                    <div className="space-y-2 pt-2">
+                      <p className="text-xs font-bold text-stone-700">同意時点の約款全文スナップショット</p>
+                      <div className="space-y-2 text-xs text-stone-600 bg-stone-50 p-3 rounded-lg max-h-48 overflow-y-auto">
+                        {selectedRecordModal.agreement_snapshot.sections.map((s) => (
+                          <div key={s.id} className="border-b border-stone-200 pb-1.5 last:border-0">
+                            <span className="font-bold text-stone-800">{s.title}</span>
+                            <p className="whitespace-pre-line pl-1">{s.content}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+    // PWA: ホーム画面追加と基本的なキャッシュ
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch((error) => {
+          console.error('Service Worker registration failed:', error);
+        });
+      });
+    }
+  </script>
+</body>
+</html>
